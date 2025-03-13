@@ -1,0 +1,4 @@
+/target
+
+config_manager.toml
+database/wallet.db*
