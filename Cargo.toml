@@ -27,7 +27,7 @@ serde = { version = "1.0.171", features = ["derive"] }
 toml = "0.8.20"
 colored = "3.0.0"
 chrono = "0.4.40"
-tabled = { version = "*", features = ["ansi"] }
+tabled = { version = "0.18.0", features = ["ansi"] }
 dirs = "6.0.0"
 
 [profile.release]
