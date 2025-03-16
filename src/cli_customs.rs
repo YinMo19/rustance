@@ -43,7 +43,7 @@ pub fn get_styles() -> clap::builder::Styles {
 
 #[derive(Parser)]
 #[command(name = "rustance")]
-#[command(version = "1.0")]
+#[command(version = "0.2")]
 #[command(about = "Calculate Your Balances.", long_about = None)]
 #[command(styles=get_styles())]
 #[command(propagate_version = true)]
@@ -65,6 +65,9 @@ pub enum Commands {
 
     /// patch record.
     PatchRecord(PatchRecordArgs),
+
+    /// delete record.
+    DeleteRecord(DeleteRecordArgs),
 }
 
 #[derive(Args)]
@@ -76,7 +79,6 @@ pub struct ListAllArgs {
     // /// The verbose output will list all the addtional msg.
     // #[arg(short, long, default_value_t = false)]
     // pub verbose: bool,
-
     /// Time select.
     #[arg(short, long)]
     pub time: Option<String>,
@@ -93,16 +95,30 @@ pub struct AmountArgs {
     pub add_msg: Option<String>,
 }
 
-// #[derive(Args)]
-// pub struct OutComeArgs {
-//     /// the amount of money. e.g. 100.00.
-//     /// The amount must be greater than 0.
-//     /// and the digit after the decimal point must be less than 2.
-//     pub amount: f32,
-
-//     /// add if some additional message is needed.
-//     pub add_msg: Option<String>,
-// }
+#[derive(Args)]
+pub struct DeleteRecordArgs {
+    /// the id of the record.
+    /// will show the id of the record before delete.
+    pub id: i32,
+}
 
 #[derive(Args)]
-pub struct PatchRecordArgs {}
+pub struct PatchRecordArgs {
+    /// the id of the record.
+    pub id: i32,
+
+    /// the amount of money. e.g. 100.00.
+    /// The amount must be greater than 0.
+    /// and the digit after the decimal point must be less than 2.
+    #[arg(long)]
+    pub amount: Option<f32>,
+
+    /// the in or out of the record.
+    /// true means income, false means outcome.
+    #[arg(short, long)]
+    pub in_or_out: Option<bool>,
+
+    /// add if some additional message is needed.
+    #[arg(short, long)]
+    pub add_msg: Option<String>,
+}

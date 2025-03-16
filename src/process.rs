@@ -1,4 +1,5 @@
-use crate::cli_customs::{AmountArgs, ListAllArgs};
+use crate::PatchRecordArgs;
+use crate::cli_customs::{AmountArgs, DeleteRecordArgs, ListAllArgs};
 use chrono::{Datelike, FixedOffset, NaiveDate, Utc};
 use colored::*;
 use sqlx::prelude::FromRow;
@@ -20,6 +21,7 @@ use tabled::{
 /// origin data from database
 #[derive(FromRow, Clone, Debug, Tabled)]
 pub struct Amount {
+    pub id: i32,
     pub amount: u32,
     pub in_or_out: bool,
     pub append_msg: String,
@@ -33,6 +35,7 @@ pub struct Amount {
 #[derive(Clone, Debug, Tabled)]
 
 pub struct AmountPrecise {
+    pub id: i32,
     pub amount: f32,
     pub in_or_out: bool,
     pub append_msg: String,
@@ -48,7 +51,7 @@ pub async fn list_all(args: &ListAllArgs, database_path: PathBuf) -> Result<(), 
 
     let query = r#"
         SELECT 
-            amount, in_or_out, append_msg, created_at, updated_at 
+            id, amount, in_or_out, append_msg, created_at, updated_at 
         FROM 
             amount_record
     "#;
@@ -81,9 +84,19 @@ pub async fn list_all(args: &ListAllArgs, database_path: PathBuf) -> Result<(), 
         format_output_month_total(&grouped_amount[&month], month).expect("output error.");
     }
 
+    match args.time {
+        Some(_) => (),
+        None => println!("{}{}", "Total: ".blue().bold(), {
+            let hundred_amount = amount.iter().fold(0, |acc, x| {
+                acc + x.amount as i32 * if x.in_or_out { 1 } else { -1 }
+            }) as f32
+                / 100.0;
+            hundred_amount.to_string().purple().italic()
+        }),
+    };
+
     Ok(())
 }
-
 
 /// use tabled to format the output.
 /// this function only format a single month.
@@ -91,11 +104,14 @@ fn format_output_month_total(amount: &[Amount], month: String) -> Result<(), Box
     let mut amount_precise: Vec<AmountPrecise> = amount
         .iter()
         .map(|x| {
-            let offset = FixedOffset::east_opt(8 * 3600).unwrap();
+            let offset: FixedOffset = FixedOffset::east_opt(8 * 3600).unwrap();
             let updated_at_utc_plus_8 = x.updated_at.with_timezone(&offset);
-            let updated_at_str = updated_at_utc_plus_8.to_string();
+            let updated_at_str = updated_at_utc_plus_8
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
 
             AmountPrecise {
+                id: x.id,
                 amount: x.amount as f32 / 100.0,
                 in_or_out: x.in_or_out,
                 append_msg: x.append_msg.clone(),
@@ -104,15 +120,17 @@ fn format_output_month_total(amount: &[Amount], month: String) -> Result<(), Box
         })
         .collect();
 
-    let month_total = amount_precise.iter().fold(0.0, |acc, x| {
-        acc + x.amount * if x.in_or_out { 1.0 } else { -1.0 }
-    });
+    let month_total = amount.iter().fold(0, |acc, x| {
+        acc + x.amount as i32 * if x.in_or_out { 1 } else { -1 }
+    }) as f32
+        / 100.0;
     let (abs_month_total, month_in_or_out) = if month_total > 0.0 {
         (month_total, true)
     } else {
         (-month_total, false)
     };
     amount_precise.push(AmountPrecise {
+        id: 0,
         amount: abs_month_total,
         in_or_out: month_in_or_out,
         append_msg: "Month Total".to_string(),
@@ -125,6 +143,7 @@ fn format_output_month_total(amount: &[Amount], month: String) -> Result<(), Box
         .with(Style::blank())
         .with(Colorization::columns([
             Color::FG_BRIGHT_WHITE,
+            Color::FG_BRIGHT_BLUE,
             Color::FG_BRIGHT_RED,
             Color::FG_BRIGHT_CYAN,
             Color::FG_MAGENTA,
@@ -136,7 +155,7 @@ fn format_output_month_total(amount: &[Amount], month: String) -> Result<(), Box
         .modify(
             Rows::new(..),
             Format::positioned(|c, pos| {
-                if pos.col() == 1 {
+                if pos.col() == 2 {
                     match c.parse::<bool>() {
                         Ok(false) => {
                             let color = Color::FG_BRIGHT_RED;
@@ -173,10 +192,7 @@ fn group_amount_by_month(amount: &Vec<Amount>) -> HashMap<String, Vec<Amount>> {
 
     for record in amount {
         let month = record.updated_at.format("%Y-%m").to_string();
-        month_map
-            .entry(month)
-            .or_default()
-            .push(record.to_owned());
+        month_map.entry(month).or_default().push(record.to_owned());
     }
 
     month_map
@@ -197,7 +213,7 @@ pub async fn insert_in_or_out_come(
     "#;
 
     sqlx::query(query)
-        .bind(args.amount * 100.0)
+        .bind((args.amount * 100.0) as u32)
         .bind(in_or_out)
         .bind(args.add_msg.clone().unwrap_or("".to_string()))
         .bind(Utc::now().format("%Y-%m-%d %H:%M:%S").to_string())
@@ -217,6 +233,152 @@ pub async fn insert_in_or_out_come(
         "record with amount".yellow().bold(),
         args.amount.to_string().purple().bold()
     );
+
+    Ok(())
+}
+
+/// Delete the specified record.
+pub async fn delete_record(
+    args: &DeleteRecordArgs,
+    database_path: PathBuf,
+) -> Result<(), Box<dyn Error>> {
+    let options = SqliteConnectOptions::new().filename(&database_path);
+    let pool = SqlitePool::connect_with(options).await?;
+
+    let query_select = r#"
+        SELECT 
+            id, amount, in_or_out, append_msg, created_at, updated_at
+        FROM 
+            amount_record
+        WHERE 
+            id = ?
+    "#;
+
+    let record = sqlx::query_as::<_, Amount>(query_select)
+        .bind(args.id)
+        .fetch_all(&pool)
+        .await
+        .expect("error when select the amount_record");
+
+    assert!(record.len() == 1, "the id is not exist");
+    format_output_month_total(&record, record[0].created_at.to_string()).expect("format error");
+    println!(
+        "{}{}{}{}",
+        "Deleted ".red().bold(),
+        "record with id ".yellow().bold(),
+        args.id.to_string().purple().bold(),
+        ". Input Yes(YES/yes/Y/y) to confirm, other to give up."
+            .blue()
+            .bold()
+    );
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .expect("Failed to read line");
+
+    if !["yes", "y"].contains(&input.trim().to_lowercase().as_str()) {
+        println!("{}", "Give up".red().bold());
+        return Ok(());
+    }
+
+    let query = r#"
+        DELETE FROM amount_record
+        WHERE id = ?
+    "#;
+
+    sqlx::query(query)
+        .bind(args.id)
+        .execute(&pool)
+        .await
+        .expect("error when delete the amount_record");
+
+    println!("{}", "Delete successfully!".green().bold());
+
+    Ok(())
+}
+
+pub async fn patch_record(
+    args: &PatchRecordArgs,
+    database_path: PathBuf,
+) -> Result<(), Box<dyn Error>> {
+    let options = SqliteConnectOptions::new().filename(&database_path);
+    let pool = SqlitePool::connect_with(options).await?;
+
+    let query_select = r#"
+        SELECT 
+            id, amount, in_or_out, append_msg, created_at, updated_at
+        FROM 
+            amount_record
+        WHERE 
+            id = ?
+    "#;
+
+    let record = sqlx::query_as::<_, Amount>(query_select)
+        .bind(args.id)
+        .fetch_all(&pool)
+        .await
+        .expect("error when select the amount_record");
+
+    assert!(record.len() == 1, "the id is not exist");
+    println!("{}", "Before:".blue().bold());
+    format_output_month_total(&record, record[0].created_at.to_string()).expect("format error");
+    println!("{}", "Patched:".blue().bold());
+    let records_now = Amount {
+        id: args.id,
+        amount: args
+            .amount
+            .map_or(record[0].amount, |amount| (amount * 100.0) as u32),
+
+        in_or_out: args.in_or_out.unwrap_or(record[0].in_or_out),
+        append_msg: args.add_msg.clone().unwrap_or(record[0].append_msg.clone()),
+        created_at: record[0].created_at,
+        updated_at: Utc::now(),
+    };
+
+    format_output_month_total(&[records_now.clone()], record[0].created_at.to_string())
+        .expect("format error");
+
+    println!(
+        "{}{}{}{}",
+        "Patch ".blue().bold(),
+        "record with id ".yellow().bold(),
+        args.id.to_string().purple().bold(),
+        ". Input Yes(YES/yes/Y/y) to confirm, other to give up."
+            .blue()
+            .bold()
+    );
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .expect("Failed to read line");
+    if !["yes", "y"].contains(&input.trim().to_lowercase().as_str()) {
+        println!("{}", "Give up".red().bold());
+        return Ok(());
+    }
+
+    let query = r#"
+        UPDATE amount_record
+        SET amount = ?, in_or_out = ?, append_msg = ?, updated_at = ?
+        WHERE id = ?
+    "#;
+
+    let affect_line = sqlx::query(query)
+        .bind(records_now.amount)
+        .bind(records_now.in_or_out)
+        .bind(records_now.append_msg)
+        .bind(
+            records_now
+                .updated_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        )
+        .bind(args.id)
+        .execute(&pool)
+        .await
+        .expect("unexpected error when patch the amount_record");
+
+    assert!(affect_line.rows_affected() == 1, "patch error.");
+    println!("{}", "Patch successfully!".green().bold());
 
     Ok(())
 }

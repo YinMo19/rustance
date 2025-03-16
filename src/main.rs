@@ -24,8 +24,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Commands::Outcome(arg) => {
             insert_in_or_out_come(arg, database, false).await?;
         }
-        Commands::PatchRecord(_) => {
-            // println!("'myapp add' was used, name is: {:?}", name.name);
+        Commands::PatchRecord(arg) => {
+            patch_record(arg, database).await?;
+        }
+        Commands::DeleteRecord(arg) => {
+            delete_record(arg, database).await?;
         }
     }
 

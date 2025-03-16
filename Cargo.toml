@@ -1,6 +1,6 @@
 [package]
 name = "rustance"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["YinMo19 <me@YinMo19.top>"]
 edition = "2024"
 description = "a rust cli accounting application"
