@@ -11,11 +11,12 @@ This is a simple accounting application written in Rust, designed to manage basi
 可以使用 cargo 从源构建:(可能需要花点时间)
 
 You can use cargo to build from source (may take some time):
+
 ```sh
 cargo install rustance
 ```
 
-或者下载 release 中对应平台的二进制文件，并放在一个你觉得合适的地方（只要路径环境变量包含即可）。第一次启动 rustance 进行任何操作会自动创建数据库并执行迁移。之后，就可以使用命令行进行记账了。·
+或者下载 release 中对应平台的二进制文件，并放在一个你觉得合适的地方（只要路径环境变量包含即可）。第一次启动 rustance 进行任何操作会自动创建数据库并执行迁移。之后，就可以使用命令行进行记账了。
 
 Or download the binary file for your platform from the release section and place it in a convenient location (ensure the path is included in your environment variables).On the first run, Rustance will automatically create the database and execute the migration. After that, you can use the command line to manage your accounts.
 
