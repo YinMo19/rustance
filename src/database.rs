@@ -105,7 +105,7 @@ async fn create_database(database_name: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Read the directory <migrate_path>/<<timestamp>-<name>.sql>
+/// Read the directory `<migrate_path>/<<timestamp>-<name>.sql>`
 /// and execute the sql file to migrate.
 async fn check_database(database_name: &str, migrate_path: &str) -> Result<(), Box<dyn Error>> {
     let m = Migrator::new(Path::new(migrate_path)).await?;

@@ -1,6 +1,6 @@
 use crate::PatchRecordArgs;
 use crate::cli_customs::{AmountArgs, DeleteRecordArgs, ListAllArgs};
-use chrono::{Datelike, FixedOffset, NaiveDate, Utc};
+use chrono::{Datelike, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use colored::*;
 use sqlx::prelude::FromRow;
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
@@ -58,14 +58,16 @@ pub async fn list_all(args: &ListAllArgs, database_path: PathBuf) -> Result<(), 
 
     let amount = match args.time {
         Some(ref time) => {
-            let current_month = NaiveDate::parse_from_str(&format!("{}-01", time), "%Y-%m-%d")
-                .expect("time format error.");
-            let next_month = current_month.with_month(current_month.month() + 1).unwrap();
+            let current_month = inverse_utc8(
+                NaiveDate::parse_from_str(&format!("{}-01", time), "%Y-%m-%d")
+                    .expect("time format error."),
+            );
 
+            let next_month = current_month.with_month(current_month.month() + 1).unwrap();
             let query = format!("{} WHERE updated_at BETWEEN ? AND ?", query);
             sqlx::query_as(&query)
-                .bind(current_month.format("%Y-%m-%d").to_string())
-                .bind(next_month.format("%Y-%m-%d").to_string())
+                .bind(current_month.format("%Y-%m-%d %H:%M:%S").to_string())
+                .bind(next_month.format("%Y-%m-%d %H:%M:%S").to_string())
                 .fetch_all(&pool)
                 .await
                 .expect("error when select the amount_record with time range specified")
@@ -96,6 +98,13 @@ pub async fn list_all(args: &ListAllArgs, database_path: PathBuf) -> Result<(), 
     };
 
     Ok(())
+}
+
+fn inverse_utc8(current: NaiveDate) -> NaiveDateTime {
+    let midnight = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
+    let current_month_midnight = NaiveDateTime::new(current, midnight);
+
+    current_month_midnight - chrono::Duration::hours(8)
 }
 
 /// use tabled to format the output.
@@ -191,7 +200,9 @@ fn group_amount_by_month(amount: &Vec<Amount>) -> HashMap<String, Vec<Amount>> {
     let mut month_map: HashMap<String, Vec<Amount>> = HashMap::new();
 
     for record in amount {
-        let month = record.updated_at.format("%Y-%m").to_string();
+        let offset: FixedOffset = FixedOffset::east_opt(8 * 3600).unwrap();
+        let updated_at_utc_plus_8 = record.updated_at.with_timezone(&offset);
+        let month = updated_at_utc_plus_8.format("%Y-%m").to_string();
         month_map.entry(month).or_default().push(record.to_owned());
     }
 
